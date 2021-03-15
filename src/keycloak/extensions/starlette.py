@@ -27,15 +27,20 @@ class Login(EndpointHandler):
 
 class Logout(EndpointHandler):
     async def get(self, request: Request) -> Response:
-        # _tokens = request.session["tokens"]
-        # tokens = json.loads(_tokens)
-        # access_token = tokens["access_token"]
-        # refresh_token = tokens["refresh_token"]
-        # self.kc.logout(access_token, refresh_token)
-        # del request.session["tokens"]
+
+        # request kc logout if we have the needed tokens
+        if "tokens" in request.session and "access_token" in request.session["tokens"] and "refresh_token" in request.session["tokens"]:
+            self.kc.logout(request.session["tokens"]["access_token"], request.session["tokens"]["refresh_token"])
+            del request.session["tokens"]
+
         if "user" in request.session:
             del request.session["user"]
-        return Response("User logged out successfully", status_code=200)
+
+        return RedirectResponse(self.redirect_uri, status_code=303)
+
+    # suppress error if keycloak calls POST after logout
+    async def post(self, request: Request):
+        return Response("Logged out", status_code=200)
 
 
 class Callback(EndpointHandler):
@@ -50,7 +55,13 @@ class Callback(EndpointHandler):
         # retrieve tokens
         code = request.query_params["code"]
         tokens = self.kc.callback(code)
-        # request.session["tokens"] = json.dumps(tokens)
+
+        # save the tokens we need for logout in the session
+        # storing too much in default starlette sessions won't let them save properly
+        request.session["tokens"] = {
+            "access_token" : tokens["access_token"],
+            "refresh_token" : tokens["refresh_token"]
+        }
 
         # retrieve user info
         access_token = tokens["access_token"]
@@ -97,7 +108,7 @@ class AuthenticationMiddleware:
 
             # handle logout request
             elif request.url.path == self.logout_uri:
-                await Logout(scope, receive, send, kc=self.kc)
+                await Logout(scope, receive, send, kc=self.kc, redirect_uri=self.redirect_uri)
                 return
 
             # handle unauthorized requests
