@@ -29,8 +29,10 @@ class Logout(EndpointHandler):
     async def get(self, request: Request) -> Response:
 
         # request kc logout if we have the needed tokens
-        if "tokens" in request.session and "access_token" in request.session["tokens"] and "refresh_token" in request.session["tokens"]:
-            self.kc.logout(request.session["tokens"]["access_token"], request.session["tokens"]["refresh_token"])
+        if "tokens" in request.session:
+            access_token = request.session["tokens"]["access_token"]
+            refresh_token = request.session["tokens"]["refresh_token"]
+            self.kc.logout(access_token, refresh_token)
             del request.session["tokens"]
 
         if "user" in request.session:
@@ -56,11 +58,11 @@ class Callback(EndpointHandler):
         code = request.query_params["code"]
         tokens = self.kc.callback(code)
 
-        # save the tokens we need for logout in the session
-        # storing too much in default starlette sessions won't let them save properly
+        # starlette session do not have enough capacity to store the entire tokens
+        # so we are saving only access token and refresh token required for performing logout properly
         request.session["tokens"] = {
-            "access_token" : tokens["access_token"],
-            "refresh_token" : tokens["refresh_token"]
+            "access_token" : tokens.access_token,
+            "refresh_token" : tokens.refresh_token
         }
 
         # retrieve user info
